@@ -1,3 +1,5 @@
+# THIS IS A COPY OF ANOTHER GIT GO THERE SEE HOW TO START
+
 # Write you a parquet parser
 
 This book introduces you how to implement a parquet parser from scratch.
