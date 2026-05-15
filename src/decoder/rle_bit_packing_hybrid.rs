@@ -1,8 +1,8 @@
 use anyhow::Result;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use polars::prelude::*;
 
-use crate::format::Type;
+use crate::{decoder::uleb128::uleb128_decode, format::Type};
 
 /// Enum represents a rle bit-packed hybrid run data.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -33,7 +33,29 @@ pub fn read_rle_bit_packed_run(
     encoded_data: Bytes,
     bit_width: u8,
 ) -> Result<(RleBitPackedRun, Bytes)> {
-    todo!("step10-02: extract a single run")
+    let (header, mut remaining) = uleb128_decode(encoded_data)?;
+    let lsb = header & 1;
+    let length = (header >> 1) as usize;
+
+    let run = if lsb == 0 {
+        let needed_bytes = bit_width.div_ceil(8) as usize;
+        let encoded_values = remaining.split_to(needed_bytes as usize);
+        RleBitPackedRun::Rle {
+            run_len: length,
+            bit_width,
+            encoded_values: encoded_values,
+        }
+    } else {
+        let run_len = length * 8;
+        let needed_bytes = run_len * bit_width as usize / 8;
+        let encoded_value = remaining.split_to(needed_bytes as usize);
+        RleBitPackedRun::BitPacked {
+            run_len: run_len as usize,
+            bit_width,
+            encoded_values: encoded_value,
+        }
+    };
+    Ok((run, remaining))
 }
 
 /// Get all the runs the encoded data.
@@ -49,7 +71,21 @@ pub fn read_rle_bit_packed_runs(
     bit_width: u8,
     prepend_length: bool,
 ) -> Result<Vec<RleBitPackedRun>> {
-    todo!("step10-03: extract all runs")
+    let mut encoded_data = encoded_data;
+    let mut runs = vec![];
+
+    if prepend_length {
+        let length = encoded_data.get_u32_le();
+        encoded_data = encoded_data.slice(..length as usize);
+    }
+
+    while !encoded_data.is_empty() {
+        let (run, remaining) = read_rle_bit_packed_run(encoded_data, bit_width)?;
+        runs.push(run);
+        encoded_data = remaining;
+    }
+
+    Ok(runs)
 }
 
 /// Decode a single rle bit-packed run.
